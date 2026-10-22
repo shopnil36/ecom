@@ -1,30 +1,35 @@
 # Chattrn Commerce
 
-A full-stack storefront and ERP built with React, Vinext, Cloudflare Workers, and D1.
+Responsive storefront and ERP with products, inventory, orders, customers, fulfillment, cash-on-delivery checkout and the supplied Chattrn REST API. Runs on Node.js/Next.js and PostgreSQL.
 
-## Features
-- Owner-private admin workspace with overview, products, stock, orders, customers, and settings.
-- Responsive storefront, product details, search/category filters, cart, server-calculated quotes, and COD checkout.
-- Durable catalog, inventory, drafts, orders, and customer records.
-- Atomic order completion and stock decrement; idempotent draft completion and cancellation.
-- Shipment carrier/tracking updates and cancellation with restocking.
-- Optional sample catalog added explicitly from the admin workspace.
+## Deploy to Render
 
-## API
-The supplied `openapi.yaml` is retained unchanged. External routes are under `/chattrn/api/2026-10` and require `X-Chattrn-Access-Token`. Set the server secret `CHATTRN_ACCESS_TOKEN` using Sites environment variables. Unconfigured external access is denied. The private site's service access header is also required for machine callers while owner-private hosting is enabled.
+1. In Render choose **New → Blueprint**, connect `shopnil36/ecom`, and select `main`.
+2. Render detects `render.yaml` and provisions a Node web service plus PostgreSQL in Singapore.
+3. Enter a strong `ADMIN_PASSWORD` of at least 12 characters. Session/API secrets are generated automatically; the database connection is wired automatically.
+4. Review the plans and deploy. This blueprint selects free plans. **Free PostgreSQL expires after 30 days**; upgrade before storing important business data. Free web services also sleep when idle.
+5. Open the deployed HTTPS URL. Use **Manage store** to sign in, then add products or explicitly load the sample collection.
+6. The API base URL is `https://YOUR-SERVICE.onrender.com/chattrn/api/2026-10`. Copy `CHATTRN_ACCESS_TOKEN` from Render → service → Environment into Chattrn. The old local token is not deployed.
 
-Browser requests use `/api` and a server-verified ChatGPT session. Private hosting is the admin authorization boundary. Do not change site visibility until explicit admin roles and customer-specific order authorization are implemented. Public commerce launch requires those access controls.
+Manual web service settings: Node.js 22.17.0, build `npm ci --include=dev && npm run build`, start `npm start`, health check `/api/health`. Required environment variables are listed in `.env.example`. Use a Render Postgres internal connection string for `DATABASE_URL`. The startup script applies the PostgreSQL schema atomically before starting the web server.
 
-Money uses decimal strings in BDT. Product status values, resource wrappers, draft completion, and errors follow the supplied contract. Read endpoints are synchronous; draft creation completes synchronously (no 202 polling required). Only one Dhaka delivery location is currently configured. Delivery is BDT 80, 1–3 days, COD. Card payments, configurable taxes/discounts and multi-location administration are not implemented.
+## Security and data
 
-Admin extensions, separate from the supplied contract:
-- `POST /api/admin/products` / `PUT /api/admin/products`
-- `PUT /api/admin/inventory`
-- `POST /api/admin/fulfill`
-- `POST /api/admin/seed`
+Public visitors can browse active products and place COD orders. Admin product/stock/fulfillment/customer operations require an authenticated owner session. Admin sessions expire after eight hours; sign out is available in the admin sidebar. Customers can access only drafts/orders created in their signed browser session. Cross-origin browser writes are rejected. Login has per-session and global rate limits. ChatGPT identity headers are not trusted on Render.
 
-The product editor manages one variant's editable fields and preserves other existing variants. The API accepts variant arrays. New variants start with zero stock. Inventory policy is deny for admin-created variants. Product images use HTTPS URL references; image uploads are not implemented. Sample images use Unsplash URLs.
+External integrations require `X-Chattrn-Access-Token`. Treat this token as privileged access to catalog, customers, orders and checkout. Keep it server-side. Do not commit `.env.local` or `.dev.vars`. Rotate the session secret to invalidate all sessions; rotate API/admin credentials separately when needed.
+
+Product, stock, draft, order and customer data persist in PostgreSQL. Atomic database transactions protect stock updates; duplicate completion/cancellation requests do not duplicate orders or restore stock twice. Local sample data and databases are not uploaded.
 
 ## Development
-Run `npm run dev`. The portable development server simulates sign-in at `/signin-with-chatgpt?return_to=/`.
-Generate schema migrations using `npm run db:generate`; apply local migrations following the Sites starter documentation. The `.openai/hosting.json` manifest binds D1 as `DB`.
+
+- Node.js 22+, PostgreSQL, `npm ci`.
+- Copy `.env.example` to `.env.local` and set real local values.
+- Apply schema: load those variables and run `node scripts/migrate-postgres.mjs` (or `node --env-file=.env.local scripts/migrate-postgres.mjs`).
+- `npm run dev` starts Next.js. `npm run build` builds production. For local production use `node --env-file=.env.local scripts/migrate-postgres.mjs` followed by `next start`; production session cookies require HTTPS.
+
+The supplied `openapi.yaml` is retained. Admin extensions are separate under `/api/admin/products`, `/api/admin/inventory`, `/api/admin/fulfill`, and `/api/admin/seed`.
+
+Current defaults: BDT, one Dhaka delivery zone, BDT 80 delivery, 1–3 days, COD. Card payments, configurable taxes/discounts, image uploads and multi-location administration are not implemented. The product editor edits the first variant and preserves other existing variants; the API supports variant arrays. New variants begin with zero stock.
+
+The repository retains the original Sites/Cloudflare starter support files and SQLite migration as historical scaffolding. Render uses Next.js, `lib/postgres.ts` and `db/postgres.sql`; Cloudflare bindings and sign-in are not used.

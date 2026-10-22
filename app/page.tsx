@@ -14,7 +14,15 @@ export default function Commerce(){
  const filtered=products.filter(p=>(mode==='admin'||p.status==='active')&&`${p.title} ${p.product_type} ${p.variants.map((v:Item)=>v.sku).join(' ')}`.toLowerCase().includes(query.toLowerCase())&&(category==='All products'||p.product_type===category));
  const cats=['All products',...new Set(products.map(p=>p.product_type).filter(Boolean))];
  const revenue=orders.filter(o=>!o.cancelled_at).reduce((s,o)=>s+Number(o.total_price),0),stock=products.reduce((s,p)=>s+p.variants.reduce((s:number,v:Item)=>s+v.inventory_quantity,0),0),low=products.filter(p=>p.variants.some((v:Item)=>v.inventory_quantity<5));
- function add(p:Item,v=p.variants[0]){setCart(c=>{const line=c.find(x=>x.variant_id===v.id);if((line?.quantity||0)>=v.inventory_quantity){setError('No more stock available');return c;}return line?c.map(x=>x.variant_id===v.id?{...x,quantity:x.quantity+1}:x):[...c,{variant_id:v.id,title:p.title,variant_title:v.title,price:v.price,image:p.images?.[0]?.src,quantity:1}];});setNotice('Added to your bag');setDraft(null);}
+ function add(p:Item,v=p.variants[0]){
+  const quantity=cart.find(line=>line.variant_id===v.id)?.quantity||0;
+  setSuccess(null);setDraft(null);setPanel('cart');
+  if(quantity>=v.inventory_quantity){setNotice('');setError('No more stock available for '+p.title);return;}
+  setError('');
+  setCart(current=>{const line=current.find(item=>item.variant_id===v.id);return line?current.map(item=>item.variant_id===v.id?{...item,quantity:Math.min(item.quantity+1,v.inventory_quantity)}:item):[...current,{variant_id:v.id,title:p.title,variant_title:v.title,price:v.price,image:p.images?.[0]?.src,quantity:1}];});
+  setNotice('Added to your bag');
+ }
+
  function changeCart(vid:string,delta:number){setCart(c=>c.map(l=>l.variant_id===vid?{...l,quantity:l.quantity+delta}:l).filter(l=>l.quantity>0));setDraft(null);}
  async function saveProduct(e:any){e.preventDefault();const f=new FormData(e.currentTarget);await action(async()=>{const product={...editing,title:f.get('title'),product_type:f.get('product_type'),vendor:f.get('vendor'),status:f.get('status'),body_html:f.get('description'),variants:editing?.variants?.map((v:Item,i:number)=>i===0?{...v,price:f.get('price'),sku:f.get('sku')}:v)||[{title:'Default',price:f.get('price'),sku:f.get('sku')}],images:f.get('image')?[{src:f.get('image'),alt:f.get('title')}]:[]};await api('admin/products',editing?'PUT':'POST',{product});setPanel('');setEditing(null);setNotice('Product saved');await load();});}
  async function checkout(e:any){e.preventDefault();const f=new FormData(e.currentTarget);await action(async()=>{const address={first_name:f.get('name'),address1:f.get('address'),city:f.get('city'),country_code:'BD',phone:f.get('phone')};const resolution=await api('locations/resolve.json?area='+encodeURIComponent(String(f.get('city'))));if(!resolution.resolution.serviceable)throw new Error('We currently deliver within Dhaka. Enter a supported Dhaka area.');const data={draft_order:{line_items:cart.map(l=>({variant_id:l.variant_id,quantity:l.quantity})),shipping_address:address,phone:f.get('phone'),email:f.get('email'),x_chattrn:{location_id:'dhaka'}}};const r=await api(draft?`draft_orders/${draft.id}.json`:'draft_orders.json',draft?'PUT':'POST',data);setDraft(r.draft_order);});}
